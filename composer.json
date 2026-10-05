@@ -1,0 +1,53 @@
+{
+    "name": "marko/broadcasting-amphp",
+    "description": "Native async SSE broadcasting server on amphp for Marko Framework",
+    "type": "marko-module",
+    "license": "MIT",
+    "require": {
+        "php": "^8.5",
+        "amphp/amp": "^3",
+        "amphp/byte-stream": "^2",
+        "amphp/http-server": "^3",
+        "amphp/pipeline": "^1",
+        "marko/amphp": "self.version",
+        "marko/authentication": "self.version",
+        "marko/broadcasting": "self.version",
+        "marko/config": "self.version",
+        "marko/core": "self.version",
+        "marko/log": "self.version",
+        "marko/pubsub": "self.version",
+        "psr/log": "^3",
+        "revolt/event-loop": "^1"
+    },
+    "require-dev": {
+        "amphp/socket": "^2",
+        "marko/pubsub-pgsql": "self.version",
+        "marko/pubsub-redis": "self.version",
+        "marko/testing": "self.version",
+        "pestphp/pest": "^4.0"
+    },
+    "suggest": {
+        "marko/pubsub-redis": "Redis pub/sub driver (recommended; fans events out across server processes)",
+        "marko/pubsub-pgsql": "PostgreSQL LISTEN/NOTIFY pub/sub driver (payloads are limited to 8000 bytes)"
+    },
+    "autoload": {
+        "psr-4": {
+            "Marko\\Broadcasting\\Amphp\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Marko\\Broadcasting\\Amphp\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "extra": {
+        "marko": {
+            "module": true
+        }
+    }
+}
