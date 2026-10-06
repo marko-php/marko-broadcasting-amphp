@@ -106,8 +106,8 @@ describe('AmphpBroadcaster', function (): void {
     })->throws(AmphpBroadcastException::class, "Public channel 'private-orders.7' uses the reserved private- prefix.");
 
     it('rejects channel names with characters outside the allowed set', function (): void {
-        amphpBroadcaster(new InMemoryPubSub())->broadcast('orders 7,8', 'order.shipped', []);
-    })->throws(BroadcastException::class, "Channel name 'orders 7,8' is not valid for Amphp.");
+        amphpBroadcaster(new InMemoryPubSub())->broadcast('orders/7', 'order.shipped', []);
+    })->throws(BroadcastException::class, "Channel name 'orders/7' is not valid for Amphp.");
 
     it('rejects an empty event name', function (): void {
         amphpBroadcaster(new InMemoryPubSub())->broadcast('orders.7', '', []);
