@@ -8,7 +8,9 @@ use Marko\Broadcasting\Amphp\Auth\AmphpSignature;
 use Marko\Broadcasting\Amphp\Exceptions\AmphpBroadcastException;
 use Marko\Broadcasting\Amphp\Subscriber\AmphpSubscriberToken;
 use Marko\Broadcasting\ChannelRegistry;
+use Marko\Broadcasting\Exceptions\BroadcastException;
 use Marko\Broadcasting\Exceptions\ChannelAuthorizationException;
+use Marko\Broadcasting\PresenceChannel;
 use Marko\Broadcasting\PrivateChannel;
 use Marko\Testing\Fake\FakeAuthenticatable;
 use Marko\Testing\Fake\FakeClock;
@@ -113,5 +115,15 @@ describe('AmphpSubscriberToken', function (): void {
     it('builds a stream url without a token for public channels', function (): void {
         expect(amphpSubscriberToken('')->streamUrl(['shows.42', 'shows.43'], null))
             ->toBe('https://realtime.example.com/stream?channels=shows.42%2Cshows.43');
+    });
+
+    it('throws a clear exception when issuing a subscriber token for a presence channel', function (): void {
+        expect(fn () => amphpSubscriberToken()->for([new PresenceChannel('room.1')], new FakeAuthenticatable(id: 7)))
+            ->toThrow(BroadcastException::class, "Presence channel 'room.1' is not supported by Amphp.");
+    });
+
+    it('throws a clear exception when building a stream url for a presence channel', function (): void {
+        expect(fn () => amphpSubscriberToken()->streamUrl(['shows.42', new PresenceChannel('room.1')], null))
+            ->toThrow(BroadcastException::class, "Presence channel 'room.1' is not supported by Amphp.");
     });
 });

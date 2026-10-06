@@ -49,7 +49,7 @@ readonly class AmphpSubscriberToken
         $authorized = [];
 
         foreach ($channels as $channel) {
-            $channel = Channel::from($channel);
+            $channel = $this->rejectPresence(Channel::from($channel));
 
             if ($channel->isPrivate() && $this->channelRegistry->authorize($channel->name, $user)) {
                 $authorized[] = $this->streamChannel($channel);
@@ -73,7 +73,10 @@ readonly class AmphpSubscriberToken
         array $channels,
         ?AuthenticatableInterface $user,
     ): string {
-        $normalized = array_map(Channel::from(...), $channels);
+        $normalized = array_map(
+            fn (string|Channel $channel): Channel => $this->rejectPresence(Channel::from($channel)),
+            $channels,
+        );
         $query = ['channels' => implode(',', array_map($this->streamChannel(...), $normalized))];
 
         if (array_any($normalized, fn (Channel $channel): bool => $channel->isPrivate())) {
@@ -83,6 +86,18 @@ readonly class AmphpSubscriberToken
         return rtrim($this->amphpBroadcastingConfig->publicUrl, '/')
             . $this->amphpBroadcastingConfig->path
             . '?' . http_build_query($query, '', '&', PHP_QUERY_RFC3986);
+    }
+
+    /**
+     * @throws BroadcastException
+     */
+    private function rejectPresence(Channel $channel): Channel
+    {
+        if ($channel->isPresence()) {
+            throw BroadcastException::presenceChannelsUnsupported('Amphp', $channel->name);
+        }
+
+        return $channel;
     }
 
     private function streamChannel(Channel $channel): string

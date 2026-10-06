@@ -56,6 +56,10 @@ readonly class AmphpBroadcaster implements BroadcasterInterface
     ): void {
         $channel = Channel::from($channel);
 
+        if ($channel->isPresence()) {
+            throw BroadcastException::presenceChannelsUnsupported(self::DRIVER, $channel->name);
+        }
+
         if ($event === '') {
             throw BroadcastException::emptyEventName();
         }

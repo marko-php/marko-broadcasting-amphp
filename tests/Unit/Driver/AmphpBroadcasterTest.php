@@ -8,6 +8,7 @@ use Marko\Broadcasting\Amphp\Exceptions\AmphpBroadcastException;
 use Marko\Broadcasting\Amphp\Tests\Support\InMemoryPubSub;
 use Marko\Broadcasting\BroadcastableInterface;
 use Marko\Broadcasting\Exceptions\BroadcastException;
+use Marko\Broadcasting\PresenceChannel;
 use Marko\Broadcasting\PrivateChannel;
 use Marko\PubSub\Exceptions\PubSubException;
 use Marko\PubSub\Message;
@@ -175,5 +176,13 @@ describe('AmphpBroadcaster', function (): void {
 
         expect(array_column($pubSub->published, 'channel'))->toBe(['shows.42', 'private-users.7'])
             ->and(publishedPayload($pubSub)['event'])->toBe('seat.sold');
+    });
+
+    it('throws a clear exception when broadcasting to a presence channel', function (): void {
+        $pubSub = new InMemoryPubSub();
+
+        expect(fn () => amphpBroadcaster($pubSub)->broadcast(new PresenceChannel('room.1'), 'user.joined', []))
+            ->toThrow(BroadcastException::class, "Presence channel 'room.1' is not supported by Amphp.")
+            ->and($pubSub->published)->toBeEmpty();
     });
 });
