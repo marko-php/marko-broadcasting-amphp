@@ -6,12 +6,14 @@ use function Amp\delay;
 use function Amp\Socket\connect;
 
 use Marko\Broadcasting\Amphp\AmphpBroadcastingConfig;
+
 use Marko\Broadcasting\Amphp\Auth\AmphpSignature;
 use Marko\Broadcasting\Amphp\Driver\AmphpBroadcaster;
 use Marko\Broadcasting\Amphp\Server\AmphpSseServer;
 use Marko\Broadcasting\Amphp\Tests\Support\InMemoryPubSub;
 use Marko\Broadcasting\Amphp\Tests\Support\SseTestClient;
 use Marko\Broadcasting\PrivateChannel;
+use Marko\Clock\SystemClock;
 use Marko\Log\LogLevel;
 use Marko\Testing\Fake\FakeLogger;
 use Revolt\EventLoop;
@@ -44,20 +46,22 @@ function startSseServer(
     $config = sseServerConfig($overrides);
     $pubSub = new InMemoryPubSub();
     $logger = new FakeLogger();
-    $signature = new AmphpSignature($config);
+    $clock = new SystemClock();
+    $signature = new AmphpSignature($config, $clock);
 
     $server = $streamTimeout === null
-        ? new AmphpSseServer($config, $pubSub, $signature, $logger)
-        : new class ($config, $pubSub, $signature, $logger, $streamTimeout) extends AmphpSseServer
+        ? new AmphpSseServer($config, $pubSub, $signature, $logger, $clock)
+        : new class ($config, $pubSub, $signature, $logger, $clock, $streamTimeout) extends AmphpSseServer
         {
             public function __construct(
                 AmphpBroadcastingConfig $amphpBroadcastingConfig,
                 InMemoryPubSub $subscriber,
                 AmphpSignature $amphpSignature,
                 FakeLogger $logger,
+                SystemClock $clock,
                 private readonly int $timeout,
             ) {
-                parent::__construct($amphpBroadcastingConfig, $subscriber, $amphpSignature, $logger);
+                parent::__construct($amphpBroadcastingConfig, $subscriber, $amphpSignature, $logger, $clock);
             }
 
             protected function streamTimeout(): int
@@ -71,7 +75,7 @@ function startSseServer(
     return [
         'server' => $server,
         'pubSub' => $pubSub,
-        'broadcaster' => new AmphpBroadcaster($pubSub, $config),
+        'broadcaster' => new AmphpBroadcaster($pubSub, $config, $clock),
         'signature' => $signature,
         'logger' => $logger,
         'port' => (int) $server->port(),
@@ -272,7 +276,7 @@ describe('AmphpSseServer private channels', function (): void {
         $token = match ($kind) {
             'missing' => null,
             'expired' => $this->sse['signature']->sign(7, ['private-orders.7'], time() - 10),
-            'forged' => new AmphpSignature(sseServerConfig(['appKey' => 'attacker']))->sign(
+            'forged' => new AmphpSignature(sseServerConfig(['appKey' => 'attacker']), new SystemClock())->sign(
                 7,
                 ['private-orders.7'],
                 time() + 60,
@@ -300,7 +304,7 @@ describe('AmphpSseServer private channels', function (): void {
 
     it('returns 403 for private channels when app_key is empty', function (): void {
         $this->sse = startSseServer(['appKey' => '']);
-        $token = new AmphpSignature(sseServerConfig())->sign(7, ['private-orders.7'], time() + 60);
+        $token = new AmphpSignature(sseServerConfig(), new SystemClock())->sign(7, ['private-orders.7'], time() + 60);
 
         expect(
             SseTestClient::get(

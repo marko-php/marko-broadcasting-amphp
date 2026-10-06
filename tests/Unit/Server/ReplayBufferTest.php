@@ -4,22 +4,14 @@ declare(strict_types=1);
 
 use Marko\Broadcasting\Amphp\Server\ReplayBuffer;
 use Marko\Broadcasting\Amphp\Server\SseEvent;
+use Marko\Testing\Fake\FakeClock;
 
-/**
- * @param array{now: float} $clock
- */
 function replayBuffer(
-    array &$clock,
+    FakeClock $clock,
     int $size = 3,
     int $ttl = 60,
 ): ReplayBuffer {
-    return new ReplayBuffer(
-        size: $size,
-        ttl: $ttl,
-        clock: function () use (&$clock): float {
-            return $clock['now'];
-        },
-    );
+    return new ReplayBuffer(size: $size, ttl: $ttl, clock: $clock);
 }
 
 /**
@@ -33,7 +25,7 @@ function replayedIds(?array $events): ?array
 
 describe('ReplayBuffer', function (): void {
     it('assigns increasing sequences to recorded events', function (): void {
-        $clock = ['now' => 0.0];
+        $clock = new FakeClock('@0');
         $buffer = replayBuffer($clock);
         $buffer->openChannel('a');
 
@@ -46,7 +38,7 @@ describe('ReplayBuffer', function (): void {
     });
 
     it('returns events after a sequence in order', function (): void {
-        $clock = ['now' => 0.0];
+        $clock = new FakeClock('@0');
         $buffer = replayBuffer($clock, size: 10);
         $buffer->openChannel('a');
 
@@ -59,7 +51,7 @@ describe('ReplayBuffer', function (): void {
     });
 
     it('keeps at most replay_buffer events', function (): void {
-        $clock = ['now' => 0.0];
+        $clock = new FakeClock('@0');
         $buffer = replayBuffer($clock, size: 2);
         $buffer->openChannel('a');
 
@@ -72,7 +64,7 @@ describe('ReplayBuffer', function (): void {
     });
 
     it('reports whether it can replay from a sequence', function (): void {
-        $clock = ['now' => 0.0];
+        $clock = new FakeClock('@0');
         $buffer = replayBuffer($clock, size: 2);
         $buffer->openChannel('a');
 
@@ -86,7 +78,7 @@ describe('ReplayBuffer', function (): void {
     });
 
     it('resolves an event id to its sequence and returns null for unknown ids', function (): void {
-        $clock = ['now' => 0.0];
+        $clock = new FakeClock('@0');
         $buffer = replayBuffer($clock);
         $buffer->openChannel('a');
         $buffer->openChannel('b');
@@ -100,7 +92,7 @@ describe('ReplayBuffer', function (): void {
     });
 
     it('returns null (reset) when the last event id is unknown or too old', function (): void {
-        $clock = ['now' => 0.0];
+        $clock = new FakeClock('@0');
         $buffer = replayBuffer($clock, size: 2);
         $buffer->openChannel('a');
 
@@ -113,21 +105,37 @@ describe('ReplayBuffer', function (): void {
     });
 
     it('evicts events older than replay_ttl', function (): void {
-        $clock = ['now' => 0.0];
+        $clock = new FakeClock('@0');
         $buffer = replayBuffer($clock, size: 10, ttl: 60);
         $buffer->openChannel('a');
         $buffer->record('a', 'e1', 'x', '{}');
-        $clock['now'] = 30.0;
+        $clock->travel('+30 seconds');
         $buffer->record('a', 'e2', 'x', '{}');
-        $clock['now'] = 70.0;
+        $clock->travel('+40 seconds');
 
         expect($buffer->replay(['a'], 'e1'))->toBeNull()
             ->and(replayedIds($buffer->replay(['a'], 'e2')))->toBeEmpty()
             ->and($buffer->count('a'))->toBe(1);
     });
 
+    it('evicts replay events once the injected clock passes the ttl', function (): void {
+        $clock = new FakeClock('2026-01-01 12:00:00.250000 UTC');
+        $buffer = replayBuffer($clock, size: 10, ttl: 60);
+        $buffer->openChannel('a');
+        $event = $buffer->record('a', 'e1', 'x', '{}');
+
+        $clock->travel('+59 seconds');
+        $keptBeforeTtl = $buffer->count('a');
+
+        $clock->travel('+1 second');
+
+        expect($event->receivedAt)->toBe(1767268800.25)
+            ->and($keptBeforeTtl)->toBe(1)
+            ->and($buffer->count('a'))->toBe(0);
+    });
+
     it('merges events from several channels in sequence order', function (): void {
-        $clock = ['now' => 0.0];
+        $clock = new FakeClock('@0');
         $buffer = replayBuffer($clock, size: 10);
         $buffer->openChannel('a');
         $buffer->openChannel('b');
@@ -142,7 +150,7 @@ describe('ReplayBuffer', function (): void {
     });
 
     it('cannot replay a channel subscribed after the last event id', function (): void {
-        $clock = ['now' => 0.0];
+        $clock = new FakeClock('@0');
         $buffer = replayBuffer($clock, size: 10);
         $buffer->openChannel('a');
         $buffer->record('a', 'a1', 'x', '{}');
@@ -155,7 +163,7 @@ describe('ReplayBuffer', function (): void {
     });
 
     it("forgets a channel's history when the channel is dropped", function (): void {
-        $clock = ['now' => 0.0];
+        $clock = new FakeClock('@0');
         $buffer = replayBuffer($clock, size: 10);
         $buffer->openChannel('a');
         $buffer->record('a', 'e1', 'x', '{}');
@@ -169,7 +177,7 @@ describe('ReplayBuffer', function (): void {
     });
 
     it('resets every Last-Event-ID when replay_buffer is 0', function (): void {
-        $clock = ['now' => 0.0];
+        $clock = new FakeClock('@0');
         $buffer = replayBuffer($clock, size: 0);
         $buffer->openChannel('a');
         $buffer->record('a', 'e1', 'x', '{}');

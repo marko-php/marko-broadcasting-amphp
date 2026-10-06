@@ -15,6 +15,7 @@ use Marko\Log\LogLevel;
 use Marko\PubSub\Exceptions\PubSubException;
 use Marko\PubSub\Message;
 use Marko\PubSub\Subscription;
+use Marko\Testing\Fake\FakeClock;
 use Marko\Testing\Fake\FakeLogger;
 
 function channelHub(
@@ -23,7 +24,7 @@ function channelHub(
 ): ChannelHub {
     return new ChannelHub(
         subscriber: $pubSub,
-        replayBuffer: new ReplayBuffer(size: 100, ttl: 300),
+        replayBuffer: new ReplayBuffer(size: 100, ttl: 300, clock: new FakeClock()),
         amphpBroadcastingConfig: new AmphpBroadcastingConfig(channelPrefix: 'b.'),
         logger: $logger ?? new FakeLogger(),
     );

@@ -13,6 +13,7 @@ use Marko\Broadcasting\Channel;
 use Marko\Broadcasting\ChannelRegistry;
 use Marko\Broadcasting\Exceptions\BroadcastException;
 use Marko\Broadcasting\Exceptions\ChannelAuthorizationException;
+use Psr\Clock\ClockInterface;
 use Psr\Container\ContainerExceptionInterface;
 use Psr\Container\NotFoundExceptionInterface;
 use ReflectionException;
@@ -28,6 +29,7 @@ readonly class AmphpSubscriberToken
         private AmphpSignature $amphpSignature,
         private AmphpBroadcastingConfig $amphpBroadcastingConfig,
         private ChannelRegistry $channelRegistry,
+        private ClockInterface $clock,
     ) {}
 
     /**
@@ -57,7 +59,7 @@ readonly class AmphpSubscriberToken
         return $this->amphpSignature->sign(
             $user?->getAuthIdentifier(),
             $authorized,
-            time() + $this->amphpBroadcastingConfig->tokenTtl,
+            $this->clock->now()->getTimestamp() + $this->amphpBroadcastingConfig->tokenTtl,
         );
     }
 

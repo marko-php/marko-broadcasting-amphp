@@ -11,6 +11,7 @@ use Marko\Broadcasting\ChannelRegistry;
 use Marko\Broadcasting\Exceptions\ChannelAuthorizationException;
 use Marko\Broadcasting\PrivateChannel;
 use Marko\Testing\Fake\FakeAuthenticatable;
+use Marko\Testing\Fake\FakeClock;
 
 function amphpBroadcastingTestConfig(string $appKey = 'app-secret'): AmphpBroadcastingConfig
 {
@@ -21,8 +22,10 @@ function amphpBroadcastingTestConfig(string $appKey = 'app-secret'): AmphpBroadc
     );
 }
 
-function amphpSubscriberToken(string $appKey = 'app-secret'): AmphpSubscriberToken
-{
+function amphpSubscriberToken(
+    string $appKey = 'app-secret',
+    ?FakeClock $clock = null,
+): AmphpSubscriberToken {
     /** @noinspection PhpMissingParentConstructorInspection - Test stub replaces discovery-backed authorization */
     $channelRegistry = new class () extends ChannelRegistry
     {
@@ -42,11 +45,13 @@ function amphpSubscriberToken(string $appKey = 'app-secret'): AmphpSubscriberTok
     };
 
     $config = amphpBroadcastingTestConfig($appKey);
+    $clock ??= new FakeClock();
 
     return new AmphpSubscriberToken(
-        amphpSignature: new AmphpSignature($config),
+        amphpSignature: new AmphpSignature($config, $clock),
         amphpBroadcastingConfig: $config,
         channelRegistry: $channelRegistry,
+        clock: $clock,
     );
 }
 
@@ -57,25 +62,30 @@ describe('AmphpSubscriberToken', function (): void {
             new FakeAuthenticatable(id: 7),
         );
 
-        $claims = new AmphpSignature(amphpBroadcastingTestConfig())->verify($token);
+        $claims = new AmphpSignature(amphpBroadcastingTestConfig(), new FakeClock())->verify($token);
 
         expect($claims?->channels)->toBe(['private-orders.7'])
             ->and($claims?->userId)->toBe('7');
     });
 
-    it('expires tokens after token_ttl seconds', function (): void {
-        $token = amphpSubscriberToken()->for([new PrivateChannel('orders.7')], new FakeAuthenticatable(id: 7));
+    it('signs subscriber tokens that expire token_ttl seconds after the injected clock', function (): void {
+        $clock = new FakeClock('2026-01-01 12:00:00 UTC');
+        $token = amphpSubscriberToken(clock: $clock)->for(
+            [new PrivateChannel('orders.7')],
+            new FakeAuthenticatable(id: 7),
+        );
 
-        $claims = new AmphpSignature(amphpBroadcastingTestConfig())->verify($token);
+        $claims = new AmphpSignature(amphpBroadcastingTestConfig(), $clock)->verify($token);
 
-        expect($claims?->expiresAt)->toBeGreaterThanOrEqual(time() + 599)
-            ->toBeLessThanOrEqual(time() + 600);
+        expect($claims?->expiresAt)->toBe(1767268800 + 600);
     });
 
     it('denies private channels to guests when the authorizer requires a user', function (): void {
         $token = amphpSubscriberToken()->for([new PrivateChannel('orders.7')], null);
 
-        expect(new AmphpSignature(amphpBroadcastingTestConfig())->verify($token)?->channels)->toBe([]);
+        $claims = new AmphpSignature(amphpBroadcastingTestConfig(), new FakeClock())->verify($token);
+
+        expect($claims?->channels)->toBe([]);
     });
 
     it('throws loudly for private channels without an authorizer', function (): void {
@@ -96,7 +106,7 @@ describe('AmphpSubscriberToken', function (): void {
 
         parse_str((string) parse_url($url, PHP_URL_QUERY), $query);
 
-        expect(new AmphpSignature(amphpBroadcastingTestConfig())->verify($query['token'])?->channels)
+        expect(new AmphpSignature(amphpBroadcastingTestConfig(), new FakeClock())->verify($query['token'])?->channels)
             ->toBe(['private-orders.7']);
     });
 

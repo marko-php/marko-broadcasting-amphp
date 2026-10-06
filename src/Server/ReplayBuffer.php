@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Marko\Broadcasting\Amphp\Server;
 
-use Closure;
+use Psr\Clock\ClockInterface;
 
 /**
  * Bounded, per-process history of received events for Last-Event-ID replay.
@@ -42,22 +42,14 @@ class ReplayBuffer
     private array $sequenceById = [];
 
     /**
-     * @var Closure(): float
-     */
-    private readonly Closure $clock;
-
-    /**
      * @param int $size Events kept per channel (0 disables replay)
      * @param int $ttl Seconds an event stays replayable
-     * @param (Closure(): float)|null $clock Current unix time in seconds; defaults to microtime(true)
      */
     public function __construct(
         private readonly int $size,
         private readonly int $ttl,
-        ?Closure $clock = null,
-    ) {
-        $this->clock = $clock ?? static fn (): float => microtime(true);
-    }
+        private readonly ClockInterface $clock,
+    ) {}
 
     /**
      * Mark a channel as subscribed from now on: later events are complete for it.
@@ -87,7 +79,7 @@ class ReplayBuffer
         string $event,
         string $data,
     ): SseEvent {
-        $sseEvent = new SseEvent(++$this->sequence, $channel, $id, $event, $data, ($this->clock)());
+        $sseEvent = new SseEvent(++$this->sequence, $channel, $id, $event, $data, $this->now());
 
         if ($this->size > 0 && isset($this->openedAt[$channel])) {
             $this->events[$channel][] = $sseEvent;
@@ -164,9 +156,17 @@ class ReplayBuffer
         return count($this->events[$channel] ?? []);
     }
 
+    /**
+     * Current unix time in seconds, with microseconds.
+     */
+    private function now(): float
+    {
+        return (float) $this->clock->now()->format('U.u');
+    }
+
     private function evictExpired(): void
     {
-        $cutoff = ($this->clock)() - $this->ttl;
+        $cutoff = $this->now() - $this->ttl;
 
         foreach ($this->events as $channel => $events) {
             while ($events !== [] && $events[0]->receivedAt <= $cutoff) {

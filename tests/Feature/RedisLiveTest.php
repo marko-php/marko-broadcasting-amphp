@@ -5,10 +5,12 @@ declare(strict_types=1);
 use function Amp\delay;
 
 use Marko\Broadcasting\Amphp\AmphpBroadcastingConfig;
+
 use Marko\Broadcasting\Amphp\Auth\AmphpSignature;
 use Marko\Broadcasting\Amphp\Driver\AmphpBroadcaster;
 use Marko\Broadcasting\Amphp\Server\AmphpSseServer;
 use Marko\Broadcasting\Amphp\Tests\Support\SseTestClient;
+use Marko\Clock\SystemClock;
 use Marko\PubSub\PubSubConfig;
 use Marko\PubSub\Redis\Driver\RedisPublisher;
 use Marko\PubSub\Redis\Driver\RedisSubscriber;
@@ -80,8 +82,9 @@ it('delivers events through pubsub-redis', function (): void {
     $server = new AmphpSseServer(
         $config,
         new RedisSubscriber($connection, $pubSubConfig),
-        new AmphpSignature($config),
+        new AmphpSignature($config, new SystemClock()),
         new FakeLogger(),
+        new SystemClock(),
     );
     $server->start();
 
@@ -102,7 +105,7 @@ it('delivers events through pubsub-redis', function (): void {
             delay(0.01);
         }
 
-        new AmphpBroadcaster(new RedisPublisher($connection, $pubSubConfig), $config)
+        new AmphpBroadcaster(new RedisPublisher($connection, $pubSubConfig), $config, new SystemClock())
             ->broadcast('shows.42', 'seat.sold', ['seat' => 'A1'], 'evt-redis');
 
         expect($client->waitFor('id: evt-redis'))->toContain("event: seat.sold\ndata: {\"seat\":\"A1\"}");

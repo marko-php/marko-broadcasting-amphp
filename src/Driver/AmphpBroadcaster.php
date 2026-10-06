@@ -15,6 +15,7 @@ use Marko\PubSub\Exceptions\PubSubException;
 use Marko\PubSub\Message;
 use Marko\PubSub\PgSql\Driver\PgSqlPublisher;
 use Marko\PubSub\PublisherInterface;
+use Psr\Clock\ClockInterface;
 use Random\RandomException;
 use stdClass;
 
@@ -41,6 +42,7 @@ readonly class AmphpBroadcaster implements BroadcasterInterface
     public function __construct(
         private PublisherInterface $publisher,
         private AmphpBroadcastingConfig $amphpBroadcastingConfig,
+        private ClockInterface $clock,
     ) {}
 
     /**
@@ -104,7 +106,7 @@ readonly class AmphpBroadcaster implements BroadcasterInterface
      */
     protected function generateId(): string
     {
-        return sprintf('%013d-%s', (int) floor(microtime(true) * 1000), bin2hex(random_bytes(8)));
+        return sprintf('%013d-%s', (int) $this->clock->now()->format('Uv'), bin2hex(random_bytes(8)));
     }
 
     /**

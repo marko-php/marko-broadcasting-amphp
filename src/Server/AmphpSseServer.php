@@ -26,6 +26,7 @@ use Marko\Broadcasting\Amphp\Exceptions\AmphpBroadcastException;
 use Marko\Broadcasting\Amphp\Log\PsrLoggerBridge;
 use Marko\Log\Contracts\LoggerInterface;
 use Marko\PubSub\SubscriberInterface;
+use Psr\Clock\ClockInterface;
 use Revolt\EventLoop;
 use Revolt\EventLoop\Driver\StreamSelectDriver;
 use Throwable;
@@ -64,6 +65,7 @@ class AmphpSseServer
         private readonly SubscriberInterface $subscriber,
         private readonly AmphpSignature $amphpSignature,
         private readonly LoggerInterface $logger,
+        private readonly ClockInterface $clock,
     ) {}
 
     /**
@@ -81,7 +83,7 @@ class AmphpSseServer
 
         $this->channelHub = new ChannelHub(
             $this->subscriber,
-            new ReplayBuffer($config->replayBuffer, $config->replayTtl),
+            new ReplayBuffer($config->replayBuffer, $config->replayTtl, $this->clock),
             $config,
             $this->logger,
         );

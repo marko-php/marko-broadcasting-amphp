@@ -15,15 +15,18 @@ use Marko\PubSub\PgSql\Driver\PgSqlPublisher;
 use Marko\PubSub\PgSql\PgSqlPubSubConnection;
 use Marko\PubSub\PublisherInterface;
 use Marko\PubSub\PubSubConfig;
+use Marko\Testing\Fake\FakeClock;
 use Marko\Testing\Fake\FakeConfigRepository;
 
 function amphpBroadcaster(
     PublisherInterface $publisher,
     string $channelPrefix = 'broadcast.',
+    ?FakeClock $clock = null,
 ): AmphpBroadcaster {
     return new AmphpBroadcaster(
         publisher: $publisher,
         amphpBroadcastingConfig: new AmphpBroadcastingConfig(channelPrefix: $channelPrefix),
+        clock: $clock ?? new FakeClock(),
     );
 }
 
@@ -73,10 +76,11 @@ describe('AmphpBroadcaster', function (): void {
 
     it('generates a sortable id when none is given', function (): void {
         $pubSub = new InMemoryPubSub();
-        $broadcaster = amphpBroadcaster($pubSub);
+        $clock = new FakeClock();
+        $broadcaster = amphpBroadcaster($pubSub, clock: $clock);
 
         $broadcaster->broadcast('shows.42', 'seat.sold', []);
-        usleep(2000);
+        $clock->travel('+2 milliseconds');
         $broadcaster->broadcast('shows.42', 'seat.sold', []);
 
         $first = publishedPayload($pubSub)['id'];
@@ -85,6 +89,15 @@ describe('AmphpBroadcaster', function (): void {
         expect($first)->toMatch('/^\d{13}-[0-9a-f]{16}$/')
             ->and($first)->not->toBe($second)
             ->and(strcmp($first, $second))->toBeLessThan(0);
+    });
+
+    it('prefixes generated event ids with the injected clock in unix milliseconds', function (): void {
+        $pubSub = new InMemoryPubSub();
+
+        amphpBroadcaster($pubSub, clock: new FakeClock('2026-01-01 12:00:00.123456 UTC'))
+            ->broadcast('shows.42', 'seat.sold', []);
+
+        expect(publishedPayload($pubSub)['id'])->toStartWith('1767268800123-');
     });
 
     it('rejects public channel names that start with private-', function (): void {

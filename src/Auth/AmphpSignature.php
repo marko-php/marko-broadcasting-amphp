@@ -8,6 +8,7 @@ use JsonException;
 use Marko\Broadcasting\Amphp\AmphpBroadcastingConfig;
 use Marko\Broadcasting\Amphp\Exceptions\AmphpBroadcastException;
 use Marko\Broadcasting\Exceptions\BroadcastException;
+use Psr\Clock\ClockInterface;
 
 /**
  * Signs and verifies subscriber tokens: base64url(JSON {u, c, e}) . "." . base64url(MAC), where
@@ -19,6 +20,7 @@ readonly class AmphpSignature
 {
     public function __construct(
         private AmphpBroadcastingConfig $amphpBroadcastingConfig,
+        private ClockInterface $clock,
     ) {}
 
     /**
@@ -92,7 +94,7 @@ readonly class AmphpSignature
             return null;
         }
 
-        if ($claims['e'] < time()) {
+        if ($claims['e'] < $this->clock->now()->getTimestamp()) {
             return null;
         }
 

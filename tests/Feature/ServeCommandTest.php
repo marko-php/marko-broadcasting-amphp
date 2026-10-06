@@ -11,6 +11,7 @@ use Marko\Broadcasting\Amphp\Exceptions\AmphpBroadcastException;
 use Marko\Broadcasting\Amphp\Server\AmphpSseServer;
 use Marko\Broadcasting\Amphp\Tests\Support\InMemoryPubSub;
 use Marko\Broadcasting\Amphp\Tests\Support\SseTestClient;
+use Marko\Clock\SystemClock;
 use Marko\Core\Attributes\Command;
 use Marko\Core\Command\Input;
 use Marko\Core\Command\Output;
@@ -58,7 +59,15 @@ function serveCommandServer(): AmphpSseServer
 {
     $config = new AmphpBroadcastingConfig(host: '0.0.0.0', port: 1, heartbeat: 30, logInterval: 0);
 
-    return new AmphpSseServer($config, new InMemoryPubSub(), new AmphpSignature($config), new FakeLogger());
+    $clock = new SystemClock();
+
+    return new AmphpSseServer(
+        $config,
+        new InMemoryPubSub(),
+        new AmphpSignature($config, $clock),
+        new FakeLogger(),
+        $clock,
+    );
 }
 
 /**

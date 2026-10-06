@@ -5,6 +5,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.5",
+        "marko/clock": "self.version",
         "amphp/amp": "^3",
         "amphp/byte-stream": "^2",
         "amphp/http-server": "^3",
