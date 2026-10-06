@@ -50,16 +50,52 @@ describe('AmphpSignature', function (): void {
             ->and($claims->allows('private-orders.8'))->toBeFalse();
     });
 
-    it('signs HMAC-SHA256 over user id, channels and expiry', function (): void {
+    it('signs HMAC-SHA256 over the exact encoded payload segment', function (): void {
         $token = amphpSignature()->sign('7', ['private-orders.7'], 2000000000);
-        [, $mac] = explode('.', $token);
+        [$payload, $mac] = explode('.', $token);
 
         $expected = rtrim(
-            strtr(base64_encode(hash_hmac('sha256', '7|private-orders.7|2000000000', 'app-secret', true)), '+/', '-_'),
+            strtr(base64_encode(hash_hmac('sha256', $payload, 'app-secret', true)), '+/', '-_'),
             '=',
         );
 
         expect($mac)->toBe($expected);
+    });
+
+    it('round-trips a valid token through sign and verify', function (): void {
+        $signature = amphpSignature();
+        $expires = 1767268800 + 60;
+
+        $claims = $signature->verify($signature->sign('1', ['private-user.1', 'private-admin'], $expires));
+
+        expect($claims?->userId)->toBe('1')
+            ->and($claims?->channels)->toBe(['private-user.1', 'private-admin'])
+            ->and($claims?->expiresAt)->toBe($expires);
+    });
+
+    it('rejects a token whose comma-joined channel was re-split into separate channels', function (): void {
+        $signature = amphpSignature();
+        $expires = 1767268800 + 60;
+        [, $mac] = explode('.', $signature->sign('1', ['private-user.1,private-admin'], $expires));
+        $resplit = rtrim(
+            strtr(
+                base64_encode(json_encode(['u' => '1', 'c' => ['private-user.1', 'private-admin'], 'e' => $expires])),
+                '+/',
+                '-_',
+            ),
+            '=',
+        );
+
+        expect($signature->verify($resplit . '.' . $mac))->toBeNull();
+    });
+
+    it('rejects a token with a single tampered payload byte', function (): void {
+        $signature = amphpSignature();
+        [$payload, $mac] = explode('.', $signature->sign(7, ['private-orders.7'], 1767268800 + 60));
+        $tampered = $payload;
+        $tampered[5] = $tampered[5] === 'A' ? 'B' : 'A';
+
+        expect($signature->verify($tampered . '.' . $mac))->toBeNull();
     });
 
     it('signs tokens for guests with an empty user id', function (): void {

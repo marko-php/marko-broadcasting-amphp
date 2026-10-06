@@ -33,6 +33,11 @@ readonly class AmphpBroadcaster implements BroadcasterInterface
     public const string CHANNEL_NAME_PATTERN = '/^[A-Za-z0-9_\-=@.;:]{1,200}$/';
 
     /**
+     * Human-readable form of CHANNEL_NAME_PATTERN for error messages.
+     */
+    public const string CHANNEL_NAME_ALLOWED = 'letters, digits and _ - = @ . ; : (200 characters at most)';
+
+    /**
      * PostgreSQL rejects NOTIFY payloads of 8000 bytes or more.
      */
     public const int PGSQL_PAYLOAD_LIMIT = 7999;
@@ -122,7 +127,7 @@ readonly class AmphpBroadcaster implements BroadcasterInterface
             throw BroadcastException::invalidChannelName(
                 self::DRIVER,
                 $channel->name,
-                'letters, digits and _ - = @ . ; : (200 characters at most)',
+                self::CHANNEL_NAME_ALLOWED,
             );
         }
 

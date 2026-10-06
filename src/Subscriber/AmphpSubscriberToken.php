@@ -49,7 +49,7 @@ readonly class AmphpSubscriberToken
         $authorized = [];
 
         foreach ($channels as $channel) {
-            $channel = $this->rejectPresence(Channel::from($channel));
+            $channel = $this->normalize($channel);
 
             if ($channel->isPrivate() && $this->channelRegistry->authorize($channel->name, $user)) {
                 $authorized[] = $this->streamChannel($channel);
@@ -74,7 +74,7 @@ readonly class AmphpSubscriberToken
         ?AuthenticatableInterface $user,
     ): string {
         $normalized = array_map(
-            fn (string|Channel $channel): Channel => $this->rejectPresence(Channel::from($channel)),
+            $this->normalize(...),
             $channels,
         );
         $query = ['channels' => implode(',', array_map($this->streamChannel(...), $normalized))];
@@ -89,12 +89,26 @@ readonly class AmphpSubscriberToken
     }
 
     /**
+     * Rejects presence channels and any name outside the stream's channel charset. Names are
+     * checked before authorization, so a name with a comma (the stream's channel separator) can
+     * never be authorized and signed.
+     *
      * @throws BroadcastException
      */
-    private function rejectPresence(Channel $channel): Channel
+    private function normalize(string|Channel $channel): Channel
     {
+        $channel = Channel::from($channel);
+
         if ($channel->isPresence()) {
             throw BroadcastException::presenceChannelsUnsupported('Amphp', $channel->name);
+        }
+
+        if (preg_match(AmphpBroadcaster::CHANNEL_NAME_PATTERN, $channel->name) !== 1) {
+            throw BroadcastException::invalidChannelName(
+                'Amphp',
+                $channel->name,
+                AmphpBroadcaster::CHANNEL_NAME_ALLOWED,
+            );
         }
 
         return $channel;

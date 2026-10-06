@@ -11,8 +11,11 @@ use Marko\Broadcasting\Exceptions\BroadcastException;
 use Psr\Clock\ClockInterface;
 
 /**
- * Signs and verifies subscriber tokens: base64url(JSON {u, c, e}) . "." . base64url(MAC), where
- * MAC = HMAC-SHA256(app_key, "user_id|channel,channel|expires").
+ * Signs and verifies subscriber tokens JWT-style: payload . "." . base64url(MAC), where
+ * payload = base64url(JSON {u, c, e}) and MAC = HMAC-SHA256(app_key, payload).
+ *
+ * The MAC covers the exact encoded payload bytes, so no two distinct claim sets share a MAC, and it
+ * is checked before the payload is decoded.
  *
  * The server verifies tokens with the shared app key alone, without calling back into the app.
  */
@@ -47,7 +50,9 @@ readonly class AmphpSignature
             throw BroadcastException::unencodablePayload('subscriber token', $e->getMessage(), $e);
         }
 
-        return $this->base64UrlEncode($payload) . '.' . $this->mac($userId, $channels, $expiresAt);
+        $segment = $this->base64UrlEncode($payload);
+
+        return $segment . '.' . $this->mac($segment);
     }
 
     /**
@@ -62,6 +67,10 @@ readonly class AmphpSignature
         $parts = explode('.', $token);
 
         if (count($parts) !== 2) {
+            return null;
+        }
+
+        if (!hash_equals($this->mac($parts[0]), $parts[1])) {
             return null;
         }
 
@@ -90,10 +99,6 @@ readonly class AmphpSignature
         /** @var list<string> $channels */
         $channels = $claims['c'];
 
-        if (!hash_equals($this->mac($claims['u'], $channels, $claims['e']), $parts[1])) {
-            return null;
-        }
-
         if ($claims['e'] < $this->clock->now()->getTimestamp()) {
             return null;
         }
@@ -101,17 +106,11 @@ readonly class AmphpSignature
         return new AmphpTokenClaims($claims['u'], $channels, $claims['e']);
     }
 
-    /**
-     * @param list<string> $channels
-     */
-    private function mac(
-        string $userId,
-        array $channels,
-        int $expiresAt,
-    ): string {
+    private function mac(string $segment): string
+    {
         return $this->base64UrlEncode(hash_hmac(
             'sha256',
-            $userId . '|' . implode(',', $channels) . '|' . $expiresAt,
+            $segment,
             $this->amphpBroadcastingConfig->appKey,
             true,
         ));
