@@ -16,27 +16,48 @@ use Marko\PubSub\Redis\RedisPubSubConnection;
 use Marko\Testing\Fake\FakeConfigRepository;
 use Marko\Testing\Fake\FakeLogger;
 
+/*
+ * Runs against a real Redis server (the integration-services group). Skipped,
+ * with the reason, unless REDIS_HOST is set and reachable; with
+ * MARKO_INTEGRATION_REQUIRED set (CI) an unusable Redis is a failure instead.
+ *
+ *   docker compose -f tests/Integration/compose.yml up -d
+ *   REDIS_HOST=127.0.0.1 composer test:integration
+ */
+
+pest()->group('integration-services');
+
 /**
  * Null when Redis is reachable, otherwise why the live test is skipped.
+ *
+ * @throws RuntimeException When MARKO_INTEGRATION_REQUIRED is set and Redis is unusable
  */
 function redisLiveSkipReason(): ?string
 {
     $host = $_ENV['REDIS_HOST'] ?? getenv('REDIS_HOST');
+    $reason = null;
 
     if (!is_string($host) || $host === '') {
-        return 'REDIS_HOST is not set. Start Redis with `docker compose -f tests/Integration/compose.yml up -d` and run with REDIS_HOST=127.0.0.1.';
+        $reason = 'REDIS_HOST is not set. Start Redis with `docker compose -f tests/Integration/compose.yml up -d` and '
+            . 'run with REDIS_HOST=127.0.0.1.';
+    } else {
+        $port = (int) ($_ENV['REDIS_PORT'] ?? getenv('REDIS_PORT') ?: 6379);
+        $socket = @fsockopen($host, $port, $errorCode, $errorMessage, 0.5);
+
+        if ($socket === false) {
+            $reason = "Redis is not reachable at $host:$port ($errorMessage).";
+        } else {
+            fclose($socket);
+        }
     }
 
-    $port = (int) ($_ENV['REDIS_PORT'] ?? getenv('REDIS_PORT') ?: 6379);
-    $socket = @fsockopen($host, $port, $errorCode, $errorMessage, 0.5);
+    $required = $_ENV['MARKO_INTEGRATION_REQUIRED'] ?? getenv('MARKO_INTEGRATION_REQUIRED');
 
-    if ($socket === false) {
-        return "Redis is not reachable at $host:$port ($errorMessage).";
+    if ($reason !== null && in_array(strtolower((string) $required), ['1', 'true', 'yes'], true)) {
+        throw new RuntimeException("MARKO_INTEGRATION_REQUIRED is set but Redis is unusable: $reason");
     }
 
-    fclose($socket);
-
-    return null;
+    return $reason;
 }
 
 it('delivers events through pubsub-redis', function (): void {
@@ -87,5 +108,36 @@ it('delivers events through pubsub-redis', function (): void {
         expect($client->waitFor('id: evt-redis'))->toContain("event: seat.sold\ndata: {\"seat\":\"A1\"}");
     } finally {
         $server->stop(1.0);
+    }
+});
+
+it('fails instead of skipping when MARKO_INTEGRATION_REQUIRED is set and redis is unusable', function (): void {
+    $saved = [];
+
+    foreach (['REDIS_HOST', 'MARKO_INTEGRATION_REQUIRED'] as $name) {
+        $saved[$name] = ['env' => $_ENV[$name] ?? null, 'process' => getenv($name)];
+    }
+
+    $_ENV['REDIS_HOST'] = '';
+    putenv('REDIS_HOST=');
+    $_ENV['MARKO_INTEGRATION_REQUIRED'] = '1';
+    putenv('MARKO_INTEGRATION_REQUIRED=1');
+
+    try {
+        expect(fn () => redisLiveSkipReason())
+            ->toThrow(RuntimeException::class, 'MARKO_INTEGRATION_REQUIRED is set but Redis is unusable');
+    } finally {
+        foreach ($saved as $name => $values) {
+            unset($_ENV[$name]);
+            putenv($name);
+
+            if ($values['env'] !== null) {
+                $_ENV[$name] = $values['env'];
+            }
+
+            if ($values['process'] !== false) {
+                putenv("$name={$values['process']}");
+            }
+        }
     }
 });
