@@ -6,11 +6,11 @@ use function Amp\delay;
 use function Amp\Socket\connect;
 
 use Marko\Broadcasting\Amphp\AmphpBroadcastingConfig;
-
 use Marko\Broadcasting\Amphp\Auth\AmphpSignature;
 use Marko\Broadcasting\Amphp\Driver\AmphpBroadcaster;
 use Marko\Broadcasting\Amphp\Server\AmphpSseServer;
 use Marko\Broadcasting\Amphp\Tests\Support\InMemoryPubSub;
+use Marko\Broadcasting\Amphp\Tests\Support\Poll;
 use Marko\Broadcasting\Amphp\Tests\Support\SseTestClient;
 use Marko\Broadcasting\PrivateChannel;
 use Marko\Clock\SystemClock;
@@ -143,9 +143,13 @@ describe('AmphpSseServer streaming', function (): void {
         expect($this->sse['pubSub']->activeSubscriptions('b.shows.42'))->toBe(1);
 
         // HTTP/1 does not read from the socket while a response streams, so the disconnect
-        // surfaces on the next write: a heartbeat at the latest.
+        // surfaces on a later heartbeat write. The slot is released in the same close as the
+        // subscription, so once the subscription is gone the slot is free.
         $client->close();
-        delay(2.5);
+        Poll::until(
+            fn (): bool => $this->sse['pubSub']->activeSubscriptions('b.shows.42') === 0,
+            'the disconnected stream to cancel its subscription',
+        );
 
         $next = SseTestClient::get($this->sse['port'], '/stream?channels=shows.43');
 
@@ -512,7 +516,12 @@ describe('AmphpSseServer shutdown', function (): void {
         $before = count(EventLoop::getIdentifiers());
 
         $sse['server']->stop(2.0);
-        delay(0.05);
+        Poll::until(
+            fn (): bool => $sse['pubSub']->activeSubscriptions('b.shows.42') === 0
+                && $sse['pubSub']->activeSubscriptions('b.shows.43') === 0
+                && count(EventLoop::getIdentifiers()) < $before,
+            'the shutdown to cancel every subscription and timer',
+        );
 
         expect($sse['pubSub']->activeSubscriptions('b.shows.42'))->toBe(0)
             ->and($sse['pubSub']->activeSubscriptions('b.shows.43'))->toBe(0)
@@ -521,11 +530,21 @@ describe('AmphpSseServer shutdown', function (): void {
 
     it('logs connection counts every log_interval seconds', function (): void {
         $this->sse = startSseServer(['logInterval' => 1]);
-        SseTestClient::get($this->sse['port'], '/stream?channels=shows.42')->waitFor(":ok\n\n");
-        delay(1.2);
+        // The interval timer starts with the server, so the first tick can still see 0 streams
+        // under load; wait for the tick that sees the connected client.
+        $client = SseTestClient::get($this->sse['port'], '/stream?channels=shows.42');
+        $client->waitFor(":ok\n\n");
+        $infoMessages = fn (): array => array_column(
+            $this->sse['logger']->entriesForLevel(LogLevel::Info),
+            'message',
+        );
+        Poll::until(
+            fn (): bool => in_array('Broadcasting server: 1 open streams across 1 channels', $infoMessages(), true),
+            'the log_interval tick to log the open stream',
+        );
 
-        expect(array_column($this->sse['logger']->entriesForLevel(LogLevel::Info), 'message'))
-            ->toContain('Broadcasting server: 1 open streams across 1 channels');
+        expect($infoMessages())->toContain('Broadcasting server: 1 open streams across 1 channels')
+            ->and($client->status)->toBe(200);
     });
 
     it('does not log connection counts when log_interval is 0', function (): void {

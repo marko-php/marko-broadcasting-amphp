@@ -16,6 +16,12 @@ use RuntimeException;
  */
 class SseTestClient
 {
+    /**
+     * Upper bound for every wait. Generous on purpose: a passing wait returns as soon as the
+     * data arrives, so only a run that would fail anyway pays for it.
+     */
+    private const float WAIT_TIMEOUT = 5.0;
+
     public private(set) int $status = 0;
 
     /**
@@ -71,7 +77,7 @@ class SseTestClient
      */
     public function waitFor(
         string $needle,
-        float $timeout = 2.0,
+        float $timeout = self::WAIT_TIMEOUT,
     ): string {
         $cancellation = new TimeoutCancellation(
             $timeout,
@@ -103,7 +109,7 @@ class SseTestClient
     /**
      * Read until the server ends the response or closes the socket.
      */
-    public function waitForEnd(float $timeout = 2.0): string
+    public function waitForEnd(float $timeout = self::WAIT_TIMEOUT): string
     {
         $cancellation = new TimeoutCancellation($timeout, 'Timed out waiting for the response to end');
 
@@ -121,7 +127,7 @@ class SseTestClient
 
     private function waitForHeaders(): void
     {
-        $cancellation = new TimeoutCancellation(2.0, 'Timed out waiting for response headers');
+        $cancellation = new TimeoutCancellation(self::WAIT_TIMEOUT, 'Timed out waiting for response headers');
 
         while (!$this->headersParsed) {
             $this->readMore($cancellation);
