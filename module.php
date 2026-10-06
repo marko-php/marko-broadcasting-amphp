@@ -19,6 +19,8 @@ return [
                 port: $config->getInt(key: 'broadcasting-amphp.port'),
                 path: $config->getString(key: 'broadcasting-amphp.path'),
                 healthPath: $config->getString(key: 'broadcasting-amphp.health_path'),
+                healthDetail: $config->getBool(key: 'broadcasting-amphp.health_detail'),
+                healthSecret: $config->getString(key: 'broadcasting-amphp.health_secret'),
                 publicUrl: $config->getString(key: 'broadcasting-amphp.public_url'),
                 channelPrefix: $config->getString(key: 'broadcasting-amphp.channel_prefix'),
                 appKey: $config->getString(key: 'broadcasting-amphp.app_key'),

@@ -33,6 +33,11 @@ class StreamRequestHandler implements RequestHandler
 
     public const int RETRY_AFTER_SECONDS = 5;
 
+    /**
+     * Header that must carry `health_secret` for `/health` to include per-channel counts.
+     */
+    public const string HEALTH_SECRET_HEADER = 'x-health-secret';
+
     private int $nextConnectionId = 1;
 
     private int $openConnections = 0;
@@ -76,26 +81,49 @@ class StreamRequestHandler implements RequestHandler
         }
 
         if ($path === $this->amphpBroadcastingConfig->healthPath) {
-            return $this->health($origin);
+            return $this->health($request, $origin);
         }
 
         return $this->stream($request, $origin);
     }
 
     /**
+     * Aggregate counts only, unless health detail is enabled and the request proves it knows
+     * the health secret: channel names such as private-users.7 reveal who is online.
+     *
      * @throws JsonException
      */
-    private function health(?string $origin): Response
-    {
+    private function health(
+        Request $request,
+        ?string $origin,
+    ): Response {
+        $channelCounts = $this->channelHub->channelCounts();
+        $body = [
+            'status' => 'ok',
+            'connections' => $this->channelHub->connectionCount(),
+            'channels' => count($channelCounts),
+        ];
+
+        if ($this->healthDetailAllowed($request)) {
+            $body['channel_counts'] = (object) $channelCounts;
+        }
+
         return new Response(HttpStatus::OK, [
             ...$this->corsHeaders($origin),
             'content-type' => 'application/json',
             'cache-control' => 'no-store',
-        ], json_encode([
-            'status' => 'ok',
-            'connections' => $this->channelHub->connectionCount(),
-            'channels' => (object) $this->channelHub->channelCounts(),
-        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+        ], json_encode($body, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES));
+    }
+
+    private function healthDetailAllowed(Request $request): bool
+    {
+        if (!$this->amphpBroadcastingConfig->healthDetail || $this->amphpBroadcastingConfig->healthSecret === '') {
+            return false;
+        }
+
+        $secret = $request->getHeader(self::HEALTH_SECRET_HEADER);
+
+        return $secret !== null && hash_equals($this->amphpBroadcastingConfig->healthSecret, $secret);
     }
 
     private function stream(

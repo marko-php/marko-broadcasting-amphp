@@ -178,19 +178,69 @@ describe('AmphpSseServer streaming', function (): void {
         expect(SseTestClient::get($this->sse['port'], '/nope', close: true)->status)->toBe(404);
     });
 
-    it('reports connection counts on the health endpoint', function (): void {
+    it('reports only aggregate counts on the health endpoint by default', function (): void {
         $this->sse = startSseServer();
+        SseTestClient::get($this->sse['port'], '/stream?channels=shows.42')->waitFor(":ok\n\n");
+        $token = $this->sse['signature']->sign(7, ['private-users.7'], time() + 60);
+        SseTestClient::get($this->sse['port'], "/stream?channels=shows.42,private-users.7&token=$token")
+            ->waitFor(":ok\n\n");
+
+        $health = SseTestClient::get(
+            $this->sse['port'],
+            '/health',
+            ['X-Health-Secret' => 'anything'],
+            close: true,
+        );
+        $body = $health->waitForEnd();
+
+        expect($health->status)->toBe(200)
+            ->and(json_decode($body, true))->toBe([
+                'status' => 'ok',
+                'connections' => 2,
+                'channels' => 2,
+            ])
+            ->and($body)->not->toContain('private-users.7');
+    });
+
+    it('reports per-channel counts when health detail is enabled and the secret matches', function (): void {
+        $this->sse = startSseServer(['healthDetail' => true, 'healthSecret' => 'health-secret']);
         SseTestClient::get($this->sse['port'], '/stream?channels=shows.42')->waitFor(":ok\n\n");
         SseTestClient::get($this->sse['port'], '/stream?channels=shows.42,shows.43')->waitFor(":ok\n\n");
 
-        $health = SseTestClient::get($this->sse['port'], '/health', close: true);
+        $health = SseTestClient::get(
+            $this->sse['port'],
+            '/health',
+            ['X-Health-Secret' => 'health-secret'],
+            close: true,
+        );
 
         expect($health->status)->toBe(200)
             ->and(json_decode($health->waitForEnd(), true))->toBe([
                 'status' => 'ok',
                 'connections' => 2,
-                'channels' => ['shows.42' => 2, 'shows.43' => 1],
+                'channels' => 2,
+                'channel_counts' => ['shows.42' => 2, 'shows.43' => 1],
             ]);
+    });
+
+    it('hides per-channel health counts from a missing or wrong secret', function (): void {
+        $this->sse = startSseServer(['healthDetail' => true, 'healthSecret' => 'health-secret']);
+        $token = $this->sse['signature']->sign(7, ['private-users.7'], time() + 60);
+        SseTestClient::get($this->sse['port'], "/stream?channels=private-users.7&token=$token")->waitFor(":ok\n\n");
+
+        $missing = SseTestClient::get($this->sse['port'], '/health', close: true);
+        $wrong = SseTestClient::get(
+            $this->sse['port'],
+            '/health',
+            ['X-Health-Secret' => 'health-secreT'],
+            close: true,
+        );
+        $missingBody = $missing->waitForEnd();
+        $wrongBody = $wrong->waitForEnd();
+
+        expect(json_decode($missingBody, true))->toBe(['status' => 'ok', 'connections' => 1, 'channels' => 1])
+            ->and(json_decode($wrongBody, true))->toBe(['status' => 'ok', 'connections' => 1, 'channels' => 1])
+            ->and($missingBody . $wrongBody)->not->toContain('private-users.7');
     });
 });
 

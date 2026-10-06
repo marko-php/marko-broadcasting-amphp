@@ -10,8 +10,13 @@ return [
     'port' => Env::int('BROADCASTING_AMPHP_PORT', 8085, min: 1, max: 65535),
     // Path browsers open with EventSource, e.g. /stream?channels=orders.42,private-users.7&token=...
     'path' => Env::string('BROADCASTING_AMPHP_PATH', '/stream'),
-    // JSON connection counts per channel; restrict it at your proxy if channel names are sensitive.
+    // JSON health check with aggregate counts (open streams, active channels); no channel names.
     'health_path' => Env::string('BROADCASTING_AMPHP_HEALTH_PATH', '/health'),
+    // Adds per-channel counts (channel names included) to /health for requests that send the
+    // health_secret in an X-Health-Secret header. Requires health_secret.
+    'health_detail' => Env::bool('BROADCASTING_AMPHP_HEALTH_DETAIL', false),
+    // Shared secret that unlocks per-channel health detail. Required when health_detail is true.
+    'health_secret' => Env::string('BROADCASTING_AMPHP_HEALTH_SECRET', ''),
     // Base URL browsers reach the server on (used by AmphpSubscriberToken::streamUrl()).
     'public_url' => Env::string('BROADCASTING_AMPHP_PUBLIC_URL', 'http://localhost:8085'),
     // Prepended to every channel name to form the pub/sub channel.

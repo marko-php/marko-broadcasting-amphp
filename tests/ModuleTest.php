@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Marko\Broadcasting\Amphp\AmphpBroadcastingConfig;
 use Marko\Broadcasting\Amphp\Driver\AmphpBroadcaster;
+use Marko\Broadcasting\Amphp\Exceptions\AmphpBroadcastException;
 use Marko\Broadcasting\BroadcasterInterface;
 use Marko\Config\ConfigRepositoryInterface;
 use Marko\Core\Container\Container;
@@ -36,6 +37,8 @@ describe('broadcasting-amphp module', function (): void {
             ->and($config->port)->toBe(9000)
             ->and($config->path)->toBe('/stream')
             ->and($config->healthPath)->toBe('/health')
+            ->and($config->healthDetail)->toBeFalse()
+            ->and($config->healthSecret)->toBe('')
             ->and($config->appKey)->toBe('secret')
             ->and($config->heartbeat)->toBe(15)
             ->and($config->replayBuffer)->toBe(100)
@@ -48,6 +51,40 @@ describe('broadcasting-amphp module', function (): void {
             ->and($config->logInterval)->toBe(60);
     });
 
+    it('builds a config with health detail enabled when a health secret is set', function (): void {
+        $module = require dirname(__DIR__) . '/module.php';
+        $defaults = require dirname(__DIR__) . '/config/broadcasting-amphp.php';
+
+        $values = [];
+        foreach ([...$defaults, 'health_detail' => true, 'health_secret' => 'health-secret'] as $key => $value) {
+            $values["broadcasting-amphp.$key"] = $value;
+        }
+
+        $container = new Container();
+        $container->instance(ConfigRepositoryInterface::class, new FakeConfigRepository($values));
+
+        $config = $module['bindings'][AmphpBroadcastingConfig::class]($container);
+
+        expect($config->healthDetail)->toBeTrue()
+            ->and($config->healthSecret)->toBe('health-secret');
+    });
+
+    it('refuses to build a config with health detail enabled and no health secret', function (): void {
+        $module = require dirname(__DIR__) . '/module.php';
+        $defaults = require dirname(__DIR__) . '/config/broadcasting-amphp.php';
+
+        $values = [];
+        foreach ([...$defaults, 'health_detail' => true] as $key => $value) {
+            $values["broadcasting-amphp.$key"] = $value;
+        }
+
+        $container = new Container();
+        $container->instance(ConfigRepositoryInterface::class, new FakeConfigRepository($values));
+
+        expect(fn () => $module['bindings'][AmphpBroadcastingConfig::class]($container))
+            ->toThrow(AmphpBroadcastException::class, 'Health detail is enabled but no health secret is configured.');
+    });
+
     it('ships defaults for every config key', function (): void {
         $defaults = require dirname(__DIR__) . '/config/broadcasting-amphp.php';
 
@@ -56,6 +93,8 @@ describe('broadcasting-amphp module', function (): void {
             'port',
             'path',
             'health_path',
+            'health_detail',
+            'health_secret',
             'public_url',
             'channel_prefix',
             'app_key',
@@ -68,7 +107,9 @@ describe('broadcasting-amphp module', function (): void {
             'trusted_proxies',
             'token_ttl',
             'log_interval',
-        ])->and($defaults['allowed_origins'])->toBe(['*']);
+        ])->and($defaults['allowed_origins'])->toBe(['*'])
+            ->and($defaults['health_detail'])->toBeFalse()
+            ->and($defaults['health_secret'])->toBe('');
     });
 
     it('has a valid composer.json requiring broadcasting, amphp, pubsub and http-server', function (): void {

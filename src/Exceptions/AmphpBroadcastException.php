@@ -18,6 +18,15 @@ class AmphpBroadcastException extends BroadcastException
         );
     }
 
+    public static function missingHealthSecret(): self
+    {
+        return new self(
+            message: 'Health detail is enabled but no health secret is configured.',
+            context: "'broadcasting-amphp.health_detail' is true while 'broadcasting-amphp.health_secret' is empty, so per-channel counts (including private channel names) would have no protection",
+            suggestion: 'Set BROADCASTING_AMPHP_HEALTH_SECRET to a long random secret and send it as the X-Health-Secret header, or set BROADCASTING_AMPHP_HEALTH_DETAIL=false.',
+        );
+    }
+
     public static function reservedPrivatePrefix(string $channel): self
     {
         $name = substr($channel, strlen('private-'));
