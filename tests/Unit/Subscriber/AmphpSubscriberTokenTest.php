@@ -98,21 +98,21 @@ describe('AmphpSubscriberToken', function (): void {
         amphpSubscriberToken('')->for([new PrivateChannel('orders.7')], new FakeAuthenticatable(id: 7));
     })->throws(AmphpBroadcastException::class, 'No amphp broadcasting app key is configured.');
 
-    it('rejects a private channel name containing a comma before authorizing it', function (): void {
+    it('rejects a private channel name outside the amphp pattern before authorizing it', function (): void {
         expect(fn () => amphpSubscriberToken()->for(
-            [new PrivateChannel('user.1,private-admin')],
+            [new PrivateChannel('user.1/private-admin')],
             new FakeAuthenticatable(id: 1),
-        ))->toThrow(BroadcastException::class, "Channel name 'user.1,private-admin' is not valid for Amphp.");
+        ))->toThrow(BroadcastException::class, "Channel name 'user.1/private-admin' is not valid for Amphp.");
     });
 
     it('rejects a public channel name outside the channel name pattern', function (): void {
-        expect(fn () => amphpSubscriberToken()->for(['shows.42,private-orders.8'], null))
-            ->toThrow(BroadcastException::class, "Channel name 'shows.42,private-orders.8' is not valid for Amphp.");
+        expect(fn () => amphpSubscriberToken()->for(['shows.42/private-orders.8'], null))
+            ->toThrow(BroadcastException::class, "Channel name 'shows.42/private-orders.8' is not valid for Amphp.");
     });
 
-    it('rejects a channel name containing a comma when building a stream url', function (): void {
-        expect(fn () => amphpSubscriberToken('')->streamUrl(['shows.42,private-orders.8'], null))
-            ->toThrow(BroadcastException::class, "Channel name 'shows.42,private-orders.8' is not valid for Amphp.");
+    it('rejects a channel name outside the amphp pattern when building a stream url', function (): void {
+        expect(fn () => amphpSubscriberToken('')->streamUrl(['shows.42/private-orders.8'], null))
+            ->toThrow(BroadcastException::class, "Channel name 'shows.42/private-orders.8' is not valid for Amphp.");
     });
 
     it('builds a stream url with channels and token', function (): void {
